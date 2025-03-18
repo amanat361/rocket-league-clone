@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rocket League Clone</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="game-container">
+        <div id="score-container">
+            <div id="blue-score">0</div>
+            <div id="timer">5:00</div>
+            <div id="orange-score">0</div>
+        </div>
+        <canvas id="game"></canvas>
+    </div>
+
+    <!-- Three.js and dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+    
+    <!-- Physics engine -->
+    <script src="https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js"></script>
+    
+    <!-- Performance monitoring -->
+    <script src="js/stats.min.js"></script>
+    
+    <!-- Game scripts -->
+    <script src="js/utils.js"></script>
+    <script src="js/stadium.js"></script>
+    <script src="js/ball.js"></script>
+    <script src="js/car.js"></script>
+    <script src="js/game.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

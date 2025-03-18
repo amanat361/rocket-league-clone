@@ -7,6 +7,7 @@ import * as CANNON from 'cannon';
 import { Stadium } from './stadium.js';
 import { Ball } from './ball.js';
 import { Car } from './car.js';
+import { AudioManager } from './audio.js';
 import { formatTime, directionFromRotation, clamp } from './utils.js';
 
 export class Game {
@@ -20,6 +21,9 @@ export class Game {
         this.playerCar = null;
         this.opponentCar = null;
         
+        // Audio manager
+        this.audio = new AudioManager();
+        
         // Game state
         this.score = {
             blue: 0,
@@ -31,6 +35,9 @@ export class Game {
         this.isPaused = false;
         this.countdownTime = 3; // Countdown time in seconds
         this.isCountingDown = false;
+        
+        // Track AI boost state
+        this.aiWasBoosting = false;
         
         // UI elements
         this.blueScoreElement = document.getElementById('blue-score');
@@ -213,6 +220,8 @@ export class Game {
                 break;
             case 'shift':
                 this.playerCar.setControls({ boost: true });
+                // Start boost sound
+                this.audio.startBoost();
                 break;
             case 'control':
                 this.playerCar.setControls({ drift: true });
@@ -253,6 +262,8 @@ export class Game {
                 break;
             case 'shift':
                 this.playerCar.setControls({ boost: false });
+                // Stop boost sound
+                this.audio.stopBoost();
                 break;
             case 'control':
                 this.playerCar.setControls({ drift: false });
@@ -440,6 +451,16 @@ export class Game {
             }
         }
         
+        // Play or stop boost sound for AI car based on boost state change
+        if (controls.boost && !this.aiWasBoosting) {
+            this.audio.startBoost();
+        } else if (!controls.boost && this.aiWasBoosting) {
+            this.audio.stopBoost();
+        }
+        
+        // Update AI boost state tracking
+        this.aiWasBoosting = controls.boost;
+        
         // Apply controls to AI car
         car.setControls(controls);
     }
@@ -454,12 +475,26 @@ export class Game {
         // Update UI
         this.updateUI();
         
+        // Resume audio context (needed for browsers that require user interaction)
+        this.audio.resumeAudio();
+        
+        // Play initial countdown sound
+        this.audio.playCountdown();
+        
         // Start countdown timer
         const countdownInterval = setInterval(() => {
             this.countdownTime--;
             
             // Update UI each time the countdown changes
             this.updateUI();
+            
+            if (this.countdownTime > 0) {
+                // Play countdown sound for numbers
+                this.audio.playCountdown();
+            } else if (this.countdownTime === 0) {
+                // Play "Go" sound when countdown reaches 0
+                this.audio.playCountdownGo();
+            }
             
             if (this.countdownTime <= 0) {
                 clearInterval(countdownInterval);
@@ -483,6 +518,9 @@ export class Game {
         // Reset cars
         this.playerCar.reset();
         this.opponentCar.reset();
+        
+        // Reset AI boost state
+        this.aiWasBoosting = false;
         
         // Reset camera targets to avoid jarring transitions
         if (this.cameraMode === 'follow') {

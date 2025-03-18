@@ -128,3 +128,11 @@ function addStats() {
 
 // Initialize the game when the page loads
 document.addEventListener('DOMContentLoaded', init);
+
+// Add a click event listener to the document to ensure audio can play
+// (Many browsers require user interaction before allowing audio playback)
+document.addEventListener('click', function() {
+    if (game && game.audio) {
+        game.audio.resumeAudio();
+    }
+}, { once: false });

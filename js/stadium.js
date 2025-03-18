@@ -17,9 +17,9 @@ export class Stadium {
         };
         
         this.dimensions = {
-            width: 120,    // X-axis
-            height: 40,    // Y-axis
-            length: 200,   // Z-axis
+            width: 200,    // X-axis (increased from 120)
+            height: 60,    // Y-axis (increased from 40)
+            length: 300,   // Z-axis (increased from 200)
             wallThickness: 5
         };
         
@@ -126,8 +126,8 @@ export class Stadium {
         }
         
         // End walls (along X-axis, excluding goal areas)
-        const goalWidth = 30;
-        const goalHeight = 20;
+        const goalWidth = 40; // Increased from 30
+        const goalHeight = 30; // Increased from 20
         
         for (let i = -1; i <= 1; i += 2) {
             // Left section of end wall
@@ -245,7 +245,7 @@ export class Stadium {
     }
     
     createGoals() {
-        const goalHeight = 20;
+        const goalHeight = 30; // Increased from 20
         
         // Create blue goal (at negative Z)
         this.createGoal('blue', new THREE.Vector3(0, goalHeight / 2, -(this.dimensions.length / 2)));
@@ -255,9 +255,9 @@ export class Stadium {
     }
     
     createGoal(team, position) {
-        const goalWidth = 30;
-        const goalHeight = 20;
-        const goalDepth = 15;
+        const goalWidth = 40; // Increased from 30
+        const goalHeight = 30; // Increased from 20
+        const goalDepth = 20; // Increased from 15
         
         // Goal color based on team
         const goalColor = team === 'blue' ? 0x0066ff : 0xff6600;
@@ -487,9 +487,9 @@ export class Stadium {
     
     // Check if ball is in a goal and return the team that scored
     checkGoal(ballPosition) {
-        const goalWidth = 30;
-        const goalHeight = 20;
-        const goalDepth = 15;
+        const goalWidth = 40; // Increased from 30
+        const goalHeight = 30; // Increased from 20
+        const goalDepth = 20; // Increased from 15
         
         // Check blue goal (negative Z)
         if (

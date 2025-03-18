@@ -36,8 +36,8 @@ export class Car {
         this.isBoosting = false;
         this.boostAmount = 100; // 0-100
         this.boostRechargeRate = 10; // Per second
-        this.boostConsumptionRate = 30; // Per second
-        this.boostForce = 1500;
+        this.boostConsumptionRate = 0; // Set to 0 for unlimited boost
+        this.boostForce = 3000; // Doubled boost force for significant speed increase
         this.jumpForce = 400;
         this.canJump = true;
         this.isJumping = false;
@@ -54,6 +54,9 @@ export class Car {
             jump: false,
             drift: false
         };
+        
+        // Movement direction - always in car's local space
+        this.movementDirection = new THREE.Vector3();
         
         this.createCar();
     }
@@ -197,16 +200,20 @@ export class Car {
     }
     
     createBoostParticles() {
-        const particleCount = 50;
+        const particleCount = 100; // Doubled particle count for more impressive effect
         const particleGeometry = new THREE.SphereGeometry(0.5, 8, 8);
         
         // Create particle material based on team
         const particleColor = this.team === 'blue' ? 0x0088ff : 0xff8800;
         
-        const particleMaterial = new THREE.MeshBasicMaterial({
+        const particleMaterial = new THREE.MeshStandardMaterial({
             color: particleColor,
             transparent: true,
-            opacity: 0.8
+            opacity: 0.8,
+            emissive: particleColor,
+            emissiveIntensity: 2.0,
+            roughness: 0.3,
+            metalness: 0.7
         });
         
         // Create particles
@@ -255,18 +262,33 @@ export class Car {
                 particle.mesh.position.copy(nozzlePosition);
                 particle.mesh.visible = true;
                 particle.life = 1.0;
+                
+                // Randomize particle color for cool effect
+                const hue = Math.random();
+                const particleColor = this.team === 'blue' 
+                    ? new THREE.Color().setHSL(0.6 + hue * 0.1, 1, 0.5) // Blue variations
+                    : new THREE.Color().setHSL(0.05 + hue * 0.1, 1, 0.5); // Orange variations
+                
+                particle.mesh.material.color.set(particleColor);
+                
+                // Randomize particle size for more dynamic effect
+                const baseSize = Math.random() * 0.5 + 0.5;
+                particle.mesh.scale.set(baseSize, baseSize, baseSize);
+                
+                // Increase particle speed for more dramatic trail
+                particle.speed = Math.random() * 3 + 2;
             } else {
                 // Update particle position
                 const moveDirection = direction.clone().add(particle.offset);
-                particle.mesh.position.addScaledVector(moveDirection, particle.speed * deltaTime * 10);
+                particle.mesh.position.addScaledVector(moveDirection, particle.speed * deltaTime * 15); // Increased speed
                 
                 // Update particle life
-                particle.life -= deltaTime * 2;
+                particle.life -= deltaTime * 1.5; // Slower decay for longer trails
                 
                 // Update particle appearance
                 particle.mesh.material.opacity = particle.life * 0.8;
-                const scale = particle.life * 0.5 + 0.5;
-                particle.mesh.scale.set(scale, scale, scale);
+                const scale = particle.life * 0.7 + 0.3; // Slower shrinking
+                particle.mesh.scale.multiplyScalar(scale);
                 
                 // Hide particle when life is over
                 if (particle.life <= 0) {
@@ -311,24 +333,35 @@ export class Car {
     }
     
     handleControls(deltaTime) {
-        // Get current velocity in world space
-        const worldVelocity = new THREE.Vector3(
-            this.body.velocity.x,
-            this.body.velocity.y,
-            this.body.velocity.z
-        );
+        // Create a stable control reference frame that's decoupled from the car's rotation
+        // This ensures consistent controls even when the car is flipping or barrel rolling
         
-        // Get car's forward direction vector
+        // Get car's current quaternion
         const carQuaternion = new THREE.Quaternion(
             this.body.quaternion.x,
             this.body.quaternion.y,
             this.body.quaternion.z,
             this.body.quaternion.w
         );
-        const carRotation = new THREE.Euler().setFromQuaternion(carQuaternion);
-        const forwardDirection = directionFromRotation(carRotation);
         
-        // Calculate forward force
+        // Create a stabilized control frame that only considers Y-axis rotation (yaw)
+        // Extract just the Y-rotation component to create a stable control reference
+        const carEuler = new THREE.Euler().setFromQuaternion(carQuaternion, 'YXZ');
+        const stableQuaternion = new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(0, carEuler.y, 0)
+        );
+        
+        // Get stable forward and right directions using only the Y-rotation
+        // This ensures left/right and forward/backward are always relative to the car's heading
+        // regardless of its roll or pitch
+        const stableForward = new THREE.Vector3(0, 0, 1).applyQuaternion(stableQuaternion);
+        const stableRight = new THREE.Vector3(1, 0, 0).applyQuaternion(stableQuaternion);
+        
+        // Also get the actual car directions for reference
+        const actualForward = new THREE.Vector3(0, 0, 1).applyQuaternion(carQuaternion);
+        const actualRight = new THREE.Vector3(1, 0, 0).applyQuaternion(carQuaternion);
+        
+        // Calculate movement force based on controls
         let forwardForce = 0;
         if (this.controls.forward) {
             forwardForce = this.acceleration;
@@ -336,10 +369,10 @@ export class Car {
             forwardForce = -this.braking;
         }
         
-        // Apply forward/backward force
+        // Apply forward/backward force using the stable forward direction
+        // This ensures the car always moves in the direction it's facing, regardless of its roll
         if (forwardForce !== 0) {
-            // Apply force in the car's forward direction
-            const force = forwardDirection.clone().multiplyScalar(forwardForce * deltaTime);
+            const force = stableForward.clone().multiplyScalar(forwardForce * deltaTime);
             
             // Apply force directly to velocity for more responsive controls
             this.body.velocity.x += force.x;
@@ -348,6 +381,7 @@ export class Car {
         }
         
         // Apply turning with more controlled force
+        // Turning is always around the world Y-axis, not the car's local axis
         if (this.controls.left) {
             // Apply torque to turn left
             const turnForce = this.handling * (this.controls.drift ? 5 : 3);
@@ -363,18 +397,19 @@ export class Car {
             // Apply torque to level out the car (reduce x and z rotation)
             const currentRotation = new THREE.Euler().setFromQuaternion(this.mesh.quaternion);
             
-            // Apply counter-torque proportional to current rotation
-            this.body.angularVelocity.x -= currentRotation.x * 5 * deltaTime;
-            this.body.angularVelocity.z -= currentRotation.z * 5 * deltaTime;
+            // Apply stronger counter-torque proportional to current rotation
+            // Increased stabilization factor for more reliable self-righting
+            this.body.angularVelocity.x -= currentRotation.x * 8 * deltaTime;
+            this.body.angularVelocity.z -= currentRotation.z * 8 * deltaTime;
         }
         
         // Handle boost
         this.isBoosting = false;
-        if (this.controls.boost && this.boostAmount > 0) {
+        if (this.controls.boost) { // Removed boostAmount check for unlimited boost
             this.isBoosting = true;
             
             // Apply boost force in the car's forward direction
-            const boostForce = forwardDirection.clone().multiplyScalar(this.boostForce * deltaTime);
+            const boostForce = stableForward.clone().multiplyScalar(this.boostForce * deltaTime);
             
             // Apply boost force
             this.body.applyForce(
@@ -382,9 +417,8 @@ export class Car {
                 new CANNON.Vec3(this.body.position.x, this.body.position.y, this.body.position.z)
             );
             
-            // Consume boost
-            this.boostAmount -= this.boostConsumptionRate * deltaTime;
-            if (this.boostAmount < 0) this.boostAmount = 0;
+            // No boost consumption - unlimited boost
+            // The boostAmount stays at 100 permanently
         }
         
         // Handle jump
@@ -402,11 +436,17 @@ export class Car {
             this.isJumping = false;
         }
         
-        // Calculate the right vector (perpendicular to forward direction)
-        const rightVector = new THREE.Vector3(forwardDirection.z, 0, -forwardDirection.x).normalize();
+        // Calculate the current velocity in world space
+        const worldVelocity = new THREE.Vector3(
+            this.body.velocity.x,
+            this.body.velocity.y,
+            this.body.velocity.z
+        );
         
-        // Calculate the current velocity in the right direction (lateral velocity)
-        const lateralVelocity = rightVector.clone().multiplyScalar(rightVector.dot(worldVelocity));
+        // Calculate the lateral velocity using the stable right direction
+        // This ensures drift behavior is consistent regardless of car orientation
+        const lateralVelocityMagnitude = worldVelocity.dot(stableRight);
+        const lateralVelocity = stableRight.clone().multiplyScalar(lateralVelocityMagnitude);
         
         // Apply drift (reduce lateral friction)
         if (this.controls.drift) {
@@ -431,10 +471,12 @@ export class Car {
             );
         }
         
-        // Limit maximum speed - simple approach
+        // Limit maximum speed - with boost exception
         const currentSpeed = worldVelocity.length();
-        if (currentSpeed > this.maxSpeed) {
-            const limitFactor = this.maxSpeed / currentSpeed;
+        const effectiveMaxSpeed = this.isBoosting ? this.maxSpeed * 2 : this.maxSpeed; // Double max speed when boosting
+        
+        if (currentSpeed > effectiveMaxSpeed) {
+            const limitFactor = effectiveMaxSpeed / currentSpeed;
             this.body.velocity.x *= limitFactor;
             this.body.velocity.z *= limitFactor;
             // Note: y velocity (vertical) is not limited to allow proper jumps

@@ -45,7 +45,12 @@ export class Game {
         // Camera smoothing
         this.cameraTargetPosition = new THREE.Vector3();
         this.cameraTargetLookAt = new THREE.Vector3();
-        this.cameraSmoothing = 0.15; // Lower value = smoother camera (0-1)
+        this.cameraSmoothing = 0.08; // Lower value = smoother camera (0-1)
+        
+        // Camera stability
+        this.cameraUpVector = new THREE.Vector3(0, 1, 0); // Keep camera upright
+        this.cameraMaxTilt = Math.PI / 6; // Limit camera tilt to 30 degrees
+        this.cameraStabilizationFactor = 0.95; // Higher value = more stable
         
         // Lighting
         this.lights = [];
@@ -280,26 +285,46 @@ export class Game {
     }
     
     updateFollowCamera(deltaTime) {
-        // Follow player car
+        // Follow player car with a completely decoupled camera system
         const car = this.playerCar;
         
-        // Get car's forward direction
-        const carRotation = new THREE.Euler().setFromQuaternion(car.mesh.quaternion);
-        const carDirection = directionFromRotation(carRotation);
+        // Create a stable camera reference frame that only considers Y-axis rotation (yaw)
+        // This ensures the camera follows the car's direction but doesn't flip or roll with it
+        
+        // Get car's current quaternion
+        const carQuaternion = car.mesh.quaternion.clone();
+        
+        // Extract just the Y-rotation component to create a stable camera reference
+        // Using 'YXZ' order ensures we extract yaw correctly regardless of car orientation
+        const carEuler = new THREE.Euler().setFromQuaternion(carQuaternion, 'YXZ');
+        
+        // Create a quaternion with only the Y-rotation (yaw)
+        // This completely ignores any roll or pitch of the car
+        const stableQuaternion = new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(0, carEuler.y, 0)
+        );
+        
+        // Get stable forward direction using only the Y-rotation
+        const stableForward = new THREE.Vector3(0, 0, 1).applyQuaternion(stableQuaternion);
         
         // Calculate ideal camera position - position behind the car
-        const cameraOffset = new THREE.Vector3(0, 15, -30); // Increased height and distance for better view
-        cameraOffset.applyQuaternion(car.mesh.quaternion);
+        // Apply the stable quaternion to ensure camera only follows car's heading, not its roll
+        const cameraOffset = new THREE.Vector3(0, 20, -40); // Height and distance for good view
+        cameraOffset.applyQuaternion(stableQuaternion);
         
         // Calculate target position
         const idealPosition = car.position.clone().add(cameraOffset);
         
-        // Smoothly update camera target position
+        // Ensure camera doesn't go below ground level
+        idealPosition.y = Math.max(idealPosition.y, 5);
+        
+        // Smoothly update camera target position with reduced smoothing for more responsive camera
         this.cameraTargetPosition.lerp(idealPosition, this.cameraSmoothing);
         
         // Calculate look-at point - slightly ahead of the car
-        const lookAtOffset = carDirection.clone().multiplyScalar(20); // Look further ahead
-        const idealLookAt = car.position.clone().add(lookAtOffset).add(new THREE.Vector3(0, 5, 0)); // Look slightly above the car
+        // Use the stable forward direction to ensure consistent look-at point
+        const lookAtOffset = stableForward.clone().multiplyScalar(30);
+        const idealLookAt = car.position.clone().add(lookAtOffset).add(new THREE.Vector3(0, 5, 0));
         
         // Smoothly update camera target look-at
         this.cameraTargetLookAt.lerp(idealLookAt, this.cameraSmoothing);
@@ -307,12 +332,18 @@ export class Game {
         // Apply smoothed camera position and look-at
         this.camera.position.copy(this.cameraTargetPosition);
         this.camera.lookAt(this.cameraTargetLookAt);
+        
+        // Always keep camera upright regardless of car orientation
+        this.camera.up.set(0, 1, 0);
     }
     
     updateTopCamera() {
         // Top-down view of the field
         this.camera.position.set(0, 150, 0);
         this.camera.lookAt(0, 0, 0);
+        
+        // Ensure camera is oriented correctly
+        this.camera.up.set(0, 0, -1);
     }
     
     updateAI(deltaTime) {
@@ -329,18 +360,25 @@ export class Game {
         // Direction to ball
         const directionToBall = carToBall.normalize();
         
-        // Get car's forward direction
-        const carRotation = new THREE.Euler().setFromQuaternion(car.mesh.quaternion);
-        const carForward = directionFromRotation(carRotation);
+        // Create a stable control reference frame for AI that only considers Y-axis rotation (yaw)
+        // This ensures consistent AI controls even when the car is flipping or barrel rolling
+        const carQuaternion = car.mesh.quaternion.clone();
+        const carEuler = new THREE.Euler().setFromQuaternion(carQuaternion, 'YXZ');
+        const stableQuaternion = new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(0, carEuler.y, 0)
+        );
         
-        // Calculate dot product to determine if ball is in front of car
-        const dotProduct = carForward.dot(directionToBall);
+        // Get stable forward direction using only the Y-rotation
+        const stableForward = new THREE.Vector3(0, 0, 1).applyQuaternion(stableQuaternion);
         
-        // Calculate angle between car forward and direction to ball
+        // Calculate dot product to determine if ball is in front of car using stable forward
+        const dotProduct = stableForward.dot(directionToBall);
+        
+        // Calculate angle between stable forward and direction to ball
         const angle = Math.acos(clamp(dotProduct, -1, 1));
         
-        // Determine if ball is to the left or right of car
-        const cross = carForward.clone().cross(directionToBall);
+        // Determine if ball is to the left or right of car using stable reference frame
+        const cross = stableForward.clone().cross(directionToBall);
         const isBallToLeft = cross.y > 0;
         
         // Reset controls
@@ -359,8 +397,8 @@ export class Game {
             // Ball is roughly in front of car
             controls.forward = true;
             
-            // Use boost if far from ball
-            if (distanceToBall > 50 && car.boostAmount > 20) {
+            // Use boost more aggressively since it's now unlimited
+            if (distanceToBall > 30) {
                 controls.boost = true;
             }
             
@@ -405,6 +443,9 @@ export class Game {
         const countdownInterval = setInterval(() => {
             this.countdownTime--;
             
+            // Update UI each time the countdown changes
+            this.updateUI();
+            
             if (this.countdownTime <= 0) {
                 clearInterval(countdownInterval);
                 this.isCountingDown = false;
@@ -427,6 +468,28 @@ export class Game {
         // Reset cars
         this.playerCar.reset();
         this.opponentCar.reset();
+        
+        // Reset camera targets to avoid jarring transitions
+        if (this.cameraMode === 'follow') {
+            const carPosition = this.playerCar.position.clone();
+            
+            // Create a stable quaternion for camera reset (only Y rotation)
+            const carQuaternion = this.playerCar.mesh.quaternion.clone();
+            const carEuler = new THREE.Euler().setFromQuaternion(carQuaternion, 'YXZ');
+            const stableQuaternion = new THREE.Quaternion().setFromEuler(
+                new THREE.Euler(0, carEuler.y, 0)
+            );
+            
+            // Apply stable quaternion to camera offset
+            const behindCar = new THREE.Vector3(0, 20, -40);
+            behindCar.applyQuaternion(stableQuaternion);
+            
+            // Set camera position behind car
+            this.cameraTargetPosition.copy(carPosition).add(behindCar);
+            
+            // Set look-at point to car position
+            this.cameraTargetLookAt.copy(carPosition);
+        }
     }
     
     togglePause() {

@@ -137,8 +137,8 @@ export class Stadium {
         }
         
         // End walls (along X-axis, excluding goal areas)
-        const goalWidth = 40; // Increased from 30
-        const goalHeight = 30; // Increased from 20
+        const goalWidth = 60; // Increased from 40
+        const goalHeight = 45; // Increased from 30
         
         for (let i = -1; i <= 1; i += 2) {
             // Choose material based on which end (blue or orange)
@@ -259,7 +259,7 @@ export class Stadium {
     }
     
     createGoals() {
-        const goalHeight = 30; // Increased from 20
+        const goalHeight = 45; // Increased from 30
         
         // Create blue goal (at negative Z)
         this.createGoal('blue', new THREE.Vector3(0, goalHeight / 2, -(this.dimensions.length / 2)));
@@ -269,8 +269,8 @@ export class Stadium {
     }
     
     createGoal(team, position) {
-        const goalWidth = 40; // Increased from 30
-        const goalHeight = 30; // Increased from 20
+        const goalWidth = 60; // Increased from 40
+        const goalHeight = 45; // Increased from 30
         const goalDepth = 20; // Increased from 15
         
         // Goal color based on team
@@ -294,13 +294,7 @@ export class Stadium {
         // Create the 5 sides of the goal (leaving the front open)
         const wallThickness = this.dimensions.wallThickness;
         
-        // 1. Bottom panel
-        const bottomGeometry = new THREE.BoxGeometry(goalWidth, wallThickness, goalDepth);
-        const bottomMesh = new THREE.Mesh(bottomGeometry, goalMaterial);
-        bottomMesh.position.y = -goalHeight / 2 + wallThickness / 2;
-        bottomMesh.castShadow = true;
-        bottomMesh.receiveShadow = true;
-        goalGroup.add(bottomMesh);
+        // Bottom panel removed to make the goal flush with the playing field
         
         // 2. Top panel
         const topGeometry = new THREE.BoxGeometry(goalWidth, wallThickness, goalDepth);
@@ -344,24 +338,7 @@ export class Stadium {
         // Add goal to physics world
         // We'll create 5 bodies: bottom, top, back, left, right
         
-        // Bottom
-        const bottomShape = new CANNON.Box(new CANNON.Vec3(
-            goalWidth / 2,
-            this.dimensions.wallThickness / 2,
-            goalDepth / 2
-        ));
-        
-        const bottomBody = new CANNON.Body({
-            mass: 0,
-            position: new CANNON.Vec3(
-                position.x,
-                position.y - goalHeight / 2 + this.dimensions.wallThickness / 2,
-                position.z + zOffset
-            ),
-            shape: bottomShape
-        });
-        
-        this.world.addBody(bottomBody);
+        // Bottom panel physics removed to make the goal flush with the playing field
         
         // Top
         const topShape = new CANNON.Box(new CANNON.Vec3(
@@ -491,10 +468,10 @@ export class Stadium {
     }
     
     createFieldMarkings() {
-        // Create field markings texture
+        // Create field markings texture with higher resolution for better quality at distance
         const canvas = document.createElement('canvas');
-        canvas.width = 1024;
-        canvas.height = 1024;
+        canvas.width = 2048; // Increased resolution
+        canvas.height = 2048; // Increased resolution
         const context = canvas.getContext('2d');
         
         // Create a colorful gradient background
@@ -506,12 +483,16 @@ export class Stadium {
         context.fillStyle = gradient;
         context.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Add a grid pattern
-        context.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-        context.lineWidth = 2;
+        // Calculate proper scaling factors based on stadium dimensions
+        const widthRatio = this.dimensions.width / this.dimensions.length;
+        const aspectRatio = canvas.width / canvas.height;
         
-        // Vertical grid lines
-        const gridSize = 64;
+        // Add a grid pattern
+        context.strokeStyle = 'rgba(255, 255, 255, 0.3)'; // Slightly more visible
+        context.lineWidth = 4; // Thicker lines for better visibility at distance
+        
+        // Vertical grid lines - adjusted for proper spacing
+        const gridSize = canvas.width / 16; // Fewer, more visible grid lines
         for (let x = 0; x <= canvas.width; x += gridSize) {
             context.beginPath();
             context.moveTo(x, 0);
@@ -519,7 +500,7 @@ export class Stadium {
             context.stroke();
         }
         
-        // Horizontal grid lines
+        // Horizontal grid lines - adjusted for proper spacing
         for (let y = 0; y <= canvas.height; y += gridSize) {
             context.beginPath();
             context.moveTo(0, y);
@@ -527,15 +508,15 @@ export class Stadium {
             context.stroke();
         }
         
-        // Draw center circle
+        // Draw center circle - properly centered
         context.strokeStyle = '#ffffff';
-        context.lineWidth = 5;
+        context.lineWidth = 10; // Thicker for better visibility
         context.beginPath();
         context.arc(canvas.width / 2, canvas.height / 2, canvas.width / 8, 0, Math.PI * 2);
         context.stroke();
         
         // Fill center circle with semi-transparent white
-        context.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        context.fillStyle = 'rgba(255, 255, 255, 0.15)'; // Slightly more visible
         context.fill();
         
         // Draw center line
@@ -544,25 +525,57 @@ export class Stadium {
         context.lineTo(canvas.width, canvas.height / 2);
         context.stroke();
         
+        // Draw goal area circles on both ends - properly positioned
+        const goalCircleRadius = canvas.width / 10;
+        const goalCircleDistanceFromCenter = canvas.height * 0.4; // Positioned at 40% from center
+        
+        // Blue goal area circle
+        context.beginPath();
+        context.arc(canvas.width / 2, canvas.height / 2 - goalCircleDistanceFromCenter, 
+                   goalCircleRadius, 0, Math.PI * 2);
+        context.stroke();
+        context.fillStyle = 'rgba(25, 118, 210, 0.15)'; // Semi-transparent blue
+        context.fill();
+        
+        // Orange goal area circle
+        context.beginPath();
+        context.arc(canvas.width / 2, canvas.height / 2 + goalCircleDistanceFromCenter, 
+                   goalCircleRadius, 0, Math.PI * 2);
+        context.stroke();
+        context.fillStyle = 'rgba(245, 124, 0, 0.15)'; // Semi-transparent orange
+        context.fill();
+        
         // Create texture from canvas
         const texture = new THREE.CanvasTexture(canvas);
         texture.wrapS = THREE.RepeatWrapping;
         texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(1.5, 3); // Increased to match larger arena size
         
-        // Apply texture to floor
+        // Calculate proper repeat values based on stadium dimensions
+        // The repeat values control how many times the texture repeats across the floor
+        // We want to ensure the texture covers the floor exactly once in each dimension
+        const repeatX = widthRatio; // Match the width ratio of the stadium
+        const repeatY = 1; // One repeat along the length
+        texture.repeat.set(repeatX, repeatY);
+        
+        // Enable mipmapping and anisotropic filtering for better quality at distance
+        texture.generateMipmaps = true;
+        texture.minFilter = THREE.LinearMipmapLinearFilter;
+        texture.anisotropy = 16; // Higher value for sharper textures at angles
+        
+        // Apply texture to floor with improved material settings
         this.floor.material = new THREE.MeshStandardMaterial({
             map: texture,
             roughness: 0.7,
-            metalness: 0.2
+            metalness: 0.2,
+            side: THREE.DoubleSide // Render both sides to avoid any potential rendering issues
         });
     }
     
     // Check if ball is in a goal and return the team that scored
     checkGoal(ballPosition) {
-        const goalWidth = 40; // Increased from 30
-        const goalHeight = 30; // Increased from 20
-        const goalDepth = 20; // Increased from 15
+        const goalWidth = 60; // Increased from 40
+        const goalHeight = 45; // Increased from 30
+        const goalDepth = 20; // Unchanged
         
         // Check blue goal (negative Z)
         if (

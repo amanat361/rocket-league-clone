@@ -29,7 +29,7 @@ export class Car {
         this.maxSpeed = 80; // Increased max speed for quicker movement
         this.acceleration = 800; // Increased acceleration for more responsive controls
         this.braking = 1200; // Increased braking force for faster stopping
-        this.turnSpeed = 5.0; // Increased turning speed for more responsive turning
+        this.turnSpeed = 40.0; // Doubled turning speed to ensure it works properly
         this.friction = 0.5; // Increased friction to reduce sliding
         
         // Car state
@@ -60,6 +60,9 @@ export class Car {
         
         // Current velocity for manual control
         this.currentSpeed = 0;
+        
+        // Track if we're turning
+        this.isTurning = false;
         
         this.createCar();
     }
@@ -109,7 +112,7 @@ export class Car {
                 restitution: 0.2 // Reduced bounciness
             }),
             linearDamping: 0.7, // Increased damping for less sliding
-            angularDamping: 0.99 // Very high angular damping to prevent unwanted rotation
+            angularDamping: 0.1 // Significantly reduced angular damping to allow better turning
         });
         
         // Set initial rotation based on team
@@ -350,8 +353,15 @@ export class Car {
             // Apply the upright quaternion to the physics body
             this.body.quaternion.copy(uprightQuaternion);
             
-            // Reset angular velocity to prevent spinning
-            this.body.angularVelocity.set(0, 0, 0);
+            // Reset X and Z angular velocity to prevent spinning, but keep Y for turning
+            this.body.angularVelocity.x = 0;
+            this.body.angularVelocity.z = 0;
+            
+            // If we're not turning, gradually reduce Y angular velocity
+            // But don't reduce it too quickly to allow turning momentum
+            if (!this.isTurning) {
+                this.body.angularVelocity.y *= 0.95; // Slower decay to maintain turning momentum
+            }
         }
     }
     
@@ -398,21 +408,27 @@ export class Car {
         let turnAmount = 0;
         if (this.controls.left) {
             turnAmount = isDrivingBackward ? -this.turnSpeed : this.turnSpeed;
+            this.isTurning = true;
         } else if (this.controls.right) {
             turnAmount = isDrivingBackward ? this.turnSpeed : -this.turnSpeed;
+            this.isTurning = true;
+        } else {
+            this.isTurning = false;
         }
         
-        // Always apply turning, even when not moving
-        // This allows the car to turn in place
-        const effectiveTurnAmount = turnAmount * deltaTime * (this.controls.drift ? 1.5 : 1.0);
-        
-        // Rotate the car around the Y axis
-        if (Math.abs(effectiveTurnAmount) > 0.001) {
-            const rotationQuat = new THREE.Quaternion().setFromAxisAngle(
-                new THREE.Vector3(0, 1, 0), 
-                effectiveTurnAmount
-            );
-            this.body.quaternion.mult(rotationQuat, this.body.quaternion);
+        // Apply turning directly to angular velocity for immediate response
+        if (turnAmount !== 0) {
+            // Set angular velocity directly for immediate response
+            this.body.angularVelocity.y = turnAmount;
+            
+            // Force the turning to take effect by applying a small impulse
+            // This helps overcome any physics constraints that might be preventing turning
+            const impulse = new CANNON.Vec3(0, 0, 0);
+            const point = new CANNON.Vec3(0, 0, 0);
+            this.body.applyImpulse(impulse, point);
+            
+            // Debug log to verify turning is being applied
+            console.log(`Turning: ${turnAmount > 0 ? 'left' : 'right'}, Angular velocity Y: ${this.body.angularVelocity.y}`);
         }
         
         // Apply movement in the car's forward direction
@@ -482,6 +498,7 @@ export class Car {
         this.canJump = true;
         this.isJumping = false;
         this.jumpCooldown = 0;
+        this.isTurning = false;
         
         // Reset controls
         this.controls = {

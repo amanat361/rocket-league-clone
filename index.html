@@ -16,23 +16,19 @@
         <canvas id="game"></canvas>
     </div>
 
-    <!-- Three.js and dependencies -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+    <!-- Three.js and dependencies - using ES modules version -->
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.module.js",
+        "three/examples/jsm/controls/OrbitControls.js": "https://cdn.jsdelivr.net/npm/three@0.132.2/examples/jsm/controls/OrbitControls.js",
+        "three/examples/jsm/loaders/GLTFLoader.js": "https://cdn.jsdelivr.net/npm/three@0.132.2/examples/jsm/loaders/GLTFLoader.js",
+        "cannon": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+      }
+    }
+    </script>
     
-    <!-- Physics engine -->
-    <script src="https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js"></script>
-    
-    <!-- Performance monitoring -->
-    <script src="js/stats.min.js"></script>
-    
-    <!-- Game scripts -->
-    <script src="js/utils.js"></script>
-    <script src="js/stadium.js"></script>
-    <script src="js/ball.js"></script>
-    <script src="js/car.js"></script>
-    <script src="js/game.js"></script>
-    <script src="js/main.js"></script>
+    <!-- Main entry point - this will import all other modules -->
+    <script src="js/main.js" type="module"></script>
 </body>
 </html>

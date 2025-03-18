@@ -1,7 +1,11 @@
 /**
  * Ball class for creating and managing the game ball
  */
-class Ball {
+import * as THREE from 'three';
+import * as CANNON from 'cannon';
+import { random } from './utils.js';
+
+export class Ball {
     constructor(scene, world) {
         this.scene = scene;
         this.world = world; // Physics world

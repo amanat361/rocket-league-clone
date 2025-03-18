@@ -1,0 +1,17 @@
+{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "rocket-league-clone",
+      "dependencies": {
+        "cannon": "^0.6.2",
+        "three": "^0.132.2",
+      },
+    },
+  },
+  "packages": {
+    "cannon": ["cannon@0.6.2", "", {}, "sha512-n/7wWSXr8KOSvjad2x0fJHgpMepKjOKi+NdSnjfYyijoDBZnp4JQKgPcpv28jlXoWM+N9zVYU09J0A6Qxx+Y7w=="],
+
+    "three": ["three@0.132.2", "", {}, "sha512-0wcR7LxxkXMn6Gi58gEs3QvY8WpTVXA31L2VOvpjm4ZPYFRHCZC13UqynheFoS5OXDYgtBneN0dhbaNBE8iLhQ=="],
+  }
+}

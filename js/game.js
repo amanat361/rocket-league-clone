@@ -1,7 +1,15 @@
 /**
  * Game class for managing the game state and mechanics
  */
-class Game {
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import * as CANNON from 'cannon';
+import { Stadium } from './stadium.js';
+import { Ball } from './ball.js';
+import { Car } from './car.js';
+import { formatTime, directionFromRotation, clamp } from './utils.js';
+
+export class Game {
     constructor(scene, world) {
         this.scene = scene;
         this.world = world;
@@ -33,6 +41,11 @@ class Game {
         this.cameraMode = 'follow'; // 'follow', 'orbit', 'top'
         this.camera = null;
         this.orbitControls = null;
+        
+        // Camera smoothing
+        this.cameraTargetPosition = new THREE.Vector3();
+        this.cameraTargetLookAt = new THREE.Vector3();
+        this.cameraSmoothing = 0.15; // Lower value = smoother camera (0-1)
         
         // Lighting
         this.lights = [];
@@ -80,8 +93,12 @@ class Game {
         this.camera.position.set(0, 40, 100);
         this.camera.lookAt(0, 0, 0);
         
+        // Initialize camera target positions
+        this.cameraTargetPosition.copy(this.camera.position);
+        this.cameraTargetLookAt.set(0, 0, 0);
+        
         // Create orbit controls for debug/spectator mode
-        this.orbitControls = new THREE.OrbitControls(this.camera, document.getElementById('game'));
+        this.orbitControls = new OrbitControls(this.camera, document.getElementById('game'));
         this.orbitControls.enableDamping = true;
         this.orbitControls.dampingFactor = 0.05;
         this.orbitControls.screenSpacePanning = false;
@@ -270,21 +287,26 @@ class Game {
         const carRotation = new THREE.Euler().setFromQuaternion(car.mesh.quaternion);
         const carDirection = directionFromRotation(carRotation);
         
-        // Calculate camera position - position behind the car
-        // Use negative Z to position camera behind the car
-        const cameraOffset = new THREE.Vector3(0, 12, -25);
+        // Calculate ideal camera position - position behind the car
+        const cameraOffset = new THREE.Vector3(0, 15, -30); // Increased height and distance for better view
         cameraOffset.applyQuaternion(car.mesh.quaternion);
         
-        // Smoothly move camera to new position - increased lerp factor for tighter following
-        const targetPosition = car.position.clone().add(cameraOffset);
-        this.camera.position.lerp(targetPosition, deltaTime * 10);
+        // Calculate target position
+        const idealPosition = car.position.clone().add(cameraOffset);
         
-        // Look at the car position plus a small forward offset
-        const lookAtOffset = carDirection.clone().multiplyScalar(10);
-        const targetLookAt = car.position.clone().add(lookAtOffset);
+        // Smoothly update camera target position
+        this.cameraTargetPosition.lerp(idealPosition, this.cameraSmoothing);
         
-        // Directly look at the target point without lerping for more responsive camera
-        this.camera.lookAt(targetLookAt);
+        // Calculate look-at point - slightly ahead of the car
+        const lookAtOffset = carDirection.clone().multiplyScalar(20); // Look further ahead
+        const idealLookAt = car.position.clone().add(lookAtOffset).add(new THREE.Vector3(0, 5, 0)); // Look slightly above the car
+        
+        // Smoothly update camera target look-at
+        this.cameraTargetLookAt.lerp(idealLookAt, this.cameraSmoothing);
+        
+        // Apply smoothed camera position and look-at
+        this.camera.position.copy(this.cameraTargetPosition);
+        this.camera.lookAt(this.cameraTargetLookAt);
     }
     
     updateTopCamera() {

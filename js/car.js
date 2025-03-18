@@ -1,7 +1,11 @@
 /**
  * Car class for creating and managing the player's car
  */
-class Car {
+import * as THREE from 'three';
+import * as CANNON from 'cannon';
+import { directionFromRotation } from './utils.js';
+
+export class Car {
     constructor(scene, world, team = 'blue', isPlayer = false) {
         this.scene = scene;
         this.world = world; // Physics world
@@ -25,7 +29,7 @@ class Car {
         this.maxSpeed = 60; // Reduced max speed
         this.acceleration = 600; // Reduced acceleration
         this.braking = 800; // Reduced braking force
-        this.handling = 0.05; // Reduced handling for less aggressive turning
+        this.handling = 0.2; // Increased handling for better turning response
         this.friction = 0.1; // Increased friction for more stable movement
         
         // Car state
@@ -307,21 +311,22 @@ class Car {
     }
     
     handleControls(deltaTime) {
-        // Get current velocity in local car space
+        // Get current velocity in world space
         const worldVelocity = new THREE.Vector3(
             this.body.velocity.x,
             this.body.velocity.y,
             this.body.velocity.z
         );
         
-        // Convert world velocity to local car space
+        // Get car's forward direction vector
         const carQuaternion = new THREE.Quaternion(
             this.body.quaternion.x,
             this.body.quaternion.y,
             this.body.quaternion.z,
             this.body.quaternion.w
         );
-        const localVelocity = worldVelocity.clone().applyQuaternion(carQuaternion.conjugate());
+        const carRotation = new THREE.Euler().setFromQuaternion(carQuaternion);
+        const forwardDirection = directionFromRotation(carRotation);
         
         // Calculate forward force
         let forwardForce = 0;
@@ -333,11 +338,8 @@ class Car {
         
         // Apply forward/backward force
         if (forwardForce !== 0) {
-            // Create force vector in local space
-            const force = new THREE.Vector3(0, 0, forwardForce * deltaTime);
-            
-            // Convert to world space
-            force.applyQuaternion(carQuaternion);
+            // Apply force in the car's forward direction
+            const force = forwardDirection.clone().multiplyScalar(forwardForce * deltaTime);
             
             // Apply force directly to velocity for more responsive controls
             this.body.velocity.x += force.x;
@@ -345,21 +347,15 @@ class Car {
             this.body.velocity.z += force.z;
         }
         
-        // Apply turning - significantly increased turn force for better responsiveness
+        // Apply turning with more controlled force
         if (this.controls.left) {
             // Apply torque to turn left
             const turnForce = this.handling * (this.controls.drift ? 5 : 3);
             this.body.angularVelocity.y += turnForce * deltaTime * 30;
-            
-            // Debug log to verify turning is being applied
-            console.log("Turning left, force:", turnForce * deltaTime * 30);
         } else if (this.controls.right) {
             // Apply torque to turn right
             const turnForce = -this.handling * (this.controls.drift ? 5 : 3);
             this.body.angularVelocity.y += turnForce * deltaTime * 30;
-            
-            // Debug log to verify turning is being applied
-            console.log("Turning right, force:", turnForce * deltaTime * 30);
         }
         
         // Apply rotational stabilization to keep car flat when in the air
@@ -377,11 +373,8 @@ class Car {
         if (this.controls.boost && this.boostAmount > 0) {
             this.isBoosting = true;
             
-            // Create boost force vector in local space (forward direction)
-            const boostForce = new THREE.Vector3(0, 0, this.boostForce * deltaTime);
-            
-            // Convert to world space
-            boostForce.applyQuaternion(carQuaternion);
+            // Apply boost force in the car's forward direction
+            const boostForce = forwardDirection.clone().multiplyScalar(this.boostForce * deltaTime);
             
             // Apply boost force
             this.body.applyForce(
@@ -409,15 +402,15 @@ class Car {
             this.isJumping = false;
         }
         
+        // Calculate the right vector (perpendicular to forward direction)
+        const rightVector = new THREE.Vector3(forwardDirection.z, 0, -forwardDirection.x).normalize();
+        
+        // Calculate the current velocity in the right direction (lateral velocity)
+        const lateralVelocity = rightVector.clone().multiplyScalar(rightVector.dot(worldVelocity));
+        
         // Apply drift (reduce lateral friction)
         if (this.controls.drift) {
-            // Apply lateral friction reduction
-            const lateralVelocity = new THREE.Vector3(localVelocity.x, 0, 0);
-            
-            // Convert back to world space
-            lateralVelocity.applyQuaternion(carQuaternion);
-            
-            // Apply counter force to reduce lateral movement (but less than normal)
+            // Apply reduced lateral friction when drifting
             this.body.applyForce(
                 new CANNON.Vec3(
                     -lateralVelocity.x * 0.5,
@@ -427,13 +420,7 @@ class Car {
                 new CANNON.Vec3(this.body.position.x, this.body.position.y, this.body.position.z)
             );
         } else {
-            // Apply normal lateral friction to prevent sliding
-            const lateralVelocity = new THREE.Vector3(localVelocity.x, 0, 0);
-            
-            // Convert back to world space
-            lateralVelocity.applyQuaternion(carQuaternion);
-            
-            // Apply counter force to reduce lateral movement
+            // Apply stronger lateral friction when not drifting
             this.body.applyForce(
                 new CANNON.Vec3(
                     -lateralVelocity.x * 2,
@@ -444,12 +431,13 @@ class Car {
             );
         }
         
-        // Limit maximum speed
+        // Limit maximum speed - simple approach
         const currentSpeed = worldVelocity.length();
         if (currentSpeed > this.maxSpeed) {
             const limitFactor = this.maxSpeed / currentSpeed;
             this.body.velocity.x *= limitFactor;
             this.body.velocity.z *= limitFactor;
+            // Note: y velocity (vertical) is not limited to allow proper jumps
         }
     }
     

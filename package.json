@@ -1,0 +1,13 @@
+{
+  "name": "rocket-league-clone",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run index.ts",
+    "start": "bun run index.ts"
+  },
+  "dependencies": {
+    "three": "^0.132.2",
+    "cannon": "^0.6.2"
+  }
+}

@@ -1,7 +1,11 @@
 /**
  * Stadium class for creating and managing the game arena
  */
-class Stadium {
+import * as THREE from 'three';
+import * as CANNON from 'cannon';
+import { CSG } from './csg.js';
+
+export class Stadium {
     constructor(scene, world) {
         this.scene = scene;
         this.world = world; // Physics world

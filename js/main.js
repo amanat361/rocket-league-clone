@@ -1,6 +1,12 @@
 /**
  * Main entry point for the Rocket League clone
  */
+import * as THREE from 'three';
+import * as CANNON from 'cannon';
+// Import Stats as a default export
+const Stats = await import('./stats.min.js').then(module => module.default);
+import { Game } from './game.js';
+import { CSG } from './csg.js';
 
 // Global variables
 let scene, renderer, game;
@@ -92,32 +98,5 @@ function addStats() {
     stats.dom.style.left = '0px';
 }
 
-// Add CSG support for Three.js (for creating hollow goals)
-class CSG {
-    static fromMesh(mesh) {
-        return new CSG(mesh);
-    }
-    
-    constructor(mesh) {
-        this.mesh = mesh.clone();
-    }
-    
-    subtract(otherMesh) {
-        // In a real implementation, this would perform CSG operations
-        // For our simplified version, we'll just return the original mesh
-        return this;
-    }
-    
-    static toMesh(csg, matrix, material) {
-        // In a real implementation, this would convert CSG back to mesh
-        // For our simplified version, we'll just return the original mesh
-        const mesh = csg.mesh;
-        mesh.material = material;
-        mesh.matrix.copy(matrix);
-        mesh.matrix.decompose(mesh.position, mesh.quaternion, mesh.scale);
-        return mesh;
-    }
-}
-
 // Initialize the game when the page loads
-window.addEventListener('load', init);
+document.addEventListener('DOMContentLoaded', init);

@@ -37,6 +37,21 @@ export class Game {
         this.orangeScoreElement = document.getElementById('orange-score');
         this.timerElement = document.getElementById('timer');
         
+        // Create a large countdown display element
+        this.countdownDisplay = document.createElement('div');
+        this.countdownDisplay.id = 'countdown-display';
+        this.countdownDisplay.style.position = 'absolute';
+        this.countdownDisplay.style.top = '50%';
+        this.countdownDisplay.style.left = '50%';
+        this.countdownDisplay.style.transform = 'translate(-50%, -50%)';
+        this.countdownDisplay.style.fontSize = '120px';
+        this.countdownDisplay.style.fontWeight = 'bold';
+        this.countdownDisplay.style.color = 'white';
+        this.countdownDisplay.style.textShadow = '0 0 20px rgba(255, 255, 255, 0.8)';
+        this.countdownDisplay.style.zIndex = '100';
+        this.countdownDisplay.style.display = 'none';
+        document.getElementById('game-container').appendChild(this.countdownDisplay);
+        
         // Camera settings
         this.cameraMode = 'follow'; // 'follow', 'orbit', 'top'
         this.camera = null;
@@ -540,8 +555,13 @@ export class Game {
         // Update timer
         if (this.isCountingDown) {
             this.timerElement.textContent = this.countdownTime;
+            
+            // Update the large countdown display
+            this.countdownDisplay.textContent = this.countdownTime;
+            this.countdownDisplay.style.display = 'block';
         } else {
             this.timerElement.textContent = formatTime(this.timeRemaining);
+            this.countdownDisplay.style.display = 'none';
         }
     }
     

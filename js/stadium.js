@@ -17,9 +17,9 @@ export class Stadium {
         };
         
         this.dimensions = {
-            width: 200,    // X-axis (increased from 120)
-            height: 60,    // Y-axis (increased from 40)
-            length: 300,   // Z-axis (increased from 200)
+            width: 300,    // X-axis (increased from 200)
+            height: 80,    // Y-axis (increased from 60)
+            length: 450,   // Z-axis (increased from 300)
             wallThickness: 5
         };
         
@@ -74,16 +74,24 @@ export class Stadium {
             mass: 0, // Static body
             position: new CANNON.Vec3(0, -this.dimensions.wallThickness / 2, 0),
             shape: floorShape,
-            material: new CANNON.Material({ friction: 0.05, restitution: 0.4 })
+            material: new CANNON.Material({ friction: 0.3, restitution: 0.4 })
         });
         
         this.world.addBody(floorBody);
     }
     
     createWalls() {
-        const wallMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0x444444,
-            roughness: 0.7
+        // Create gradient wall materials
+        const blueWallMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x1976d2,
+            roughness: 0.6,
+            metalness: 0.2
+        });
+        
+        const orangeWallMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0xf57c00,
+            roughness: 0.6,
+            metalness: 0.2
         });
         
         // Side walls (along Z-axis)
@@ -93,6 +101,9 @@ export class Stadium {
                 this.dimensions.height,
                 this.dimensions.length
             );
+            
+            // Use blue for left wall, orange for right wall
+            const wallMaterial = i < 0 ? blueWallMaterial : orangeWallMaterial;
             
             const sideWall = new THREE.Mesh(sideWallGeometry, wallMaterial);
             sideWall.position.set(
@@ -130,6 +141,9 @@ export class Stadium {
         const goalHeight = 30; // Increased from 20
         
         for (let i = -1; i <= 1; i += 2) {
+            // Choose material based on which end (blue or orange)
+            const endWallMaterial = i < 0 ? blueWallMaterial : orangeWallMaterial;
+            
             // Left section of end wall
             const leftEndWallGeometry = new THREE.BoxGeometry(
                 (this.dimensions.width - goalWidth) / 2,
@@ -137,7 +151,7 @@ export class Stadium {
                 this.dimensions.wallThickness
             );
             
-            const leftEndWall = new THREE.Mesh(leftEndWallGeometry, wallMaterial);
+            const leftEndWall = new THREE.Mesh(leftEndWallGeometry, endWallMaterial);
             leftEndWall.position.set(
                 -(this.dimensions.width + goalWidth) / 4,
                 this.dimensions.height / 2,
@@ -155,7 +169,7 @@ export class Stadium {
                 this.dimensions.wallThickness
             );
             
-            const rightEndWall = new THREE.Mesh(rightEndWallGeometry, wallMaterial);
+            const rightEndWall = new THREE.Mesh(rightEndWallGeometry, endWallMaterial);
             rightEndWall.position.set(
                 (this.dimensions.width + goalWidth) / 4,
                 this.dimensions.height / 2,
@@ -173,7 +187,7 @@ export class Stadium {
                 this.dimensions.wallThickness
             );
             
-            const topEndWall = new THREE.Mesh(topEndWallGeometry, wallMaterial);
+            const topEndWall = new THREE.Mesh(topEndWallGeometry, endWallMaterial);
             topEndWall.position.set(
                 0,
                 goalHeight + (this.dimensions.height - goalHeight) / 2,
@@ -269,39 +283,63 @@ export class Stadium {
             metalness: 0.7
         });
         
-        // Create goal box
-        const goalGeometry = new THREE.BoxGeometry(goalWidth, goalHeight, goalDepth);
-        const goalMesh = new THREE.Mesh(goalGeometry, goalMaterial);
+        // Create a group to hold all goal parts
+        const goalGroup = new THREE.Group();
+        goalGroup.position.copy(position);
         
         // Position the goal
         const zOffset = team === 'blue' ? -goalDepth / 2 : goalDepth / 2;
-        goalMesh.position.set(position.x, position.y, position.z + zOffset);
+        goalGroup.position.z += zOffset;
         
-        // Make the goal hollow by scaling inner cube and using CSG
-        const innerGeometry = new THREE.BoxGeometry(
-            goalWidth - this.dimensions.wallThickness * 2, 
-            goalHeight - this.dimensions.wallThickness * 2, 
-            goalDepth
-        );
+        // Create the 5 sides of the goal (leaving the front open)
+        const wallThickness = this.dimensions.wallThickness;
         
-        const innerMesh = new THREE.Mesh(innerGeometry);
-        innerMesh.position.copy(goalMesh.position);
+        // 1. Bottom panel
+        const bottomGeometry = new THREE.BoxGeometry(goalWidth, wallThickness, goalDepth);
+        const bottomMesh = new THREE.Mesh(bottomGeometry, goalMaterial);
+        bottomMesh.position.y = -goalHeight / 2 + wallThickness / 2;
+        bottomMesh.castShadow = true;
+        bottomMesh.receiveShadow = true;
+        goalGroup.add(bottomMesh);
         
-        // Use CSG to create hollow goal
-        const goalCSG = CSG.fromMesh(goalMesh);
-        const innerCSG = CSG.fromMesh(innerMesh);
-        const hollowGoal = CSG.toMesh(
-            goalCSG.subtract(innerCSG),
-            goalMesh.matrix,
-            goalMesh.material
-        );
+        // 2. Top panel
+        const topGeometry = new THREE.BoxGeometry(goalWidth, wallThickness, goalDepth);
+        const topMesh = new THREE.Mesh(topGeometry, goalMaterial);
+        topMesh.position.y = goalHeight / 2 - wallThickness / 2;
+        topMesh.castShadow = true;
+        topMesh.receiveShadow = true;
+        goalGroup.add(topMesh);
         
-        hollowGoal.castShadow = true;
-        hollowGoal.receiveShadow = true;
-        this.scene.add(hollowGoal);
+        // 3. Left panel
+        const leftGeometry = new THREE.BoxGeometry(wallThickness, goalHeight, goalDepth);
+        const leftMesh = new THREE.Mesh(leftGeometry, goalMaterial);
+        leftMesh.position.x = -goalWidth / 2 + wallThickness / 2;
+        leftMesh.castShadow = true;
+        leftMesh.receiveShadow = true;
+        goalGroup.add(leftMesh);
+        
+        // 4. Right panel
+        const rightGeometry = new THREE.BoxGeometry(wallThickness, goalHeight, goalDepth);
+        const rightMesh = new THREE.Mesh(rightGeometry, goalMaterial);
+        rightMesh.position.x = goalWidth / 2 - wallThickness / 2;
+        rightMesh.castShadow = true;
+        rightMesh.receiveShadow = true;
+        goalGroup.add(rightMesh);
+        
+        // 5. Back panel
+        const backGeometry = new THREE.BoxGeometry(goalWidth, goalHeight, wallThickness);
+        const backMesh = new THREE.Mesh(backGeometry, goalMaterial);
+        const backPanelZOffset = team === 'blue' ? -goalDepth / 2 + wallThickness / 2 : goalDepth / 2 - wallThickness / 2;
+        backMesh.position.z = backPanelZOffset;
+        backMesh.castShadow = true;
+        backMesh.receiveShadow = true;
+        goalGroup.add(backMesh);
+        
+        // Add the goal group to the scene
+        this.scene.add(goalGroup);
         
         // Store the goal
-        this.goals[team] = hollowGoal;
+        this.goals[team] = goalGroup;
         
         // Add goal to physics world
         // We'll create 5 bodies: bottom, top, back, left, right
@@ -414,12 +452,13 @@ export class Stadium {
             this.dimensions.length
         );
         
-        // Create ceiling material
+        // Create a gradient ceiling material
         const ceilingMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0x222222,
-            roughness: 0.8,
+            color: 0x673ab7, // Deep purple
+            roughness: 0.6,
+            metalness: 0.3,
             transparent: true,
-            opacity: 0.9
+            opacity: 0.7
         });
         
         // Create ceiling mesh
@@ -427,6 +466,9 @@ export class Stadium {
         this.ceiling.position.y = this.dimensions.height + this.dimensions.wallThickness / 2;
         this.ceiling.receiveShadow = true;
         this.scene.add(this.ceiling);
+        
+        // Add some colored spotlights for more visual interest
+        this.addColoredLights();
         
         // Add ceiling to physics world
         const ceilingShape = new CANNON.Box(new CANNON.Vec3(
@@ -455,9 +497,35 @@ export class Stadium {
         canvas.height = 1024;
         const context = canvas.getContext('2d');
         
-        // Fill with dark color
-        context.fillStyle = '#222222';
+        // Create a colorful gradient background
+        const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
+        gradient.addColorStop(0, '#1a237e');    // Deep blue
+        gradient.addColorStop(0.5, '#303f9f');  // Medium blue
+        gradient.addColorStop(1, '#3949ab');    // Light blue
+        
+        context.fillStyle = gradient;
         context.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Add a grid pattern
+        context.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        context.lineWidth = 2;
+        
+        // Vertical grid lines
+        const gridSize = 64;
+        for (let x = 0; x <= canvas.width; x += gridSize) {
+            context.beginPath();
+            context.moveTo(x, 0);
+            context.lineTo(x, canvas.height);
+            context.stroke();
+        }
+        
+        // Horizontal grid lines
+        for (let y = 0; y <= canvas.height; y += gridSize) {
+            context.beginPath();
+            context.moveTo(0, y);
+            context.lineTo(canvas.width, y);
+            context.stroke();
+        }
         
         // Draw center circle
         context.strokeStyle = '#ffffff';
@@ -465,6 +533,10 @@ export class Stadium {
         context.beginPath();
         context.arc(canvas.width / 2, canvas.height / 2, canvas.width / 8, 0, Math.PI * 2);
         context.stroke();
+        
+        // Fill center circle with semi-transparent white
+        context.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        context.fill();
         
         // Draw center line
         context.beginPath();
@@ -476,12 +548,13 @@ export class Stadium {
         const texture = new THREE.CanvasTexture(canvas);
         texture.wrapS = THREE.RepeatWrapping;
         texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(1, 2);
+        texture.repeat.set(1.5, 3); // Increased to match larger arena size
         
         // Apply texture to floor
         this.floor.material = new THREE.MeshStandardMaterial({
             map: texture,
-            roughness: 0.8
+            roughness: 0.7,
+            metalness: 0.2
         });
     }
     
@@ -514,6 +587,49 @@ export class Stadium {
         }
         
         return null; // No goal
+    }
+    
+    addColoredLights() {
+        // Add colored spotlights around the stadium for visual interest
+        const spotlightColors = [
+            0xff1744, // Red
+            0x2979ff, // Blue
+            0x00e676, // Green
+            0xffea00, // Yellow
+            0xd500f9  // Purple
+        ];
+        
+        // Create spotlights at various positions - scaled up for larger arena
+        const spotlightPositions = [
+            { x: -120, y: 60, z: -150 },
+            { x: 120, y: 60, z: -150 },
+            { x: -120, y: 60, z: 150 },
+            { x: 120, y: 60, z: 150 },
+            { x: 0, y: 60, z: 0 }
+        ];
+        
+        spotlightPositions.forEach((pos, index) => {
+            const color = spotlightColors[index % spotlightColors.length];
+            
+            // Create spotlight
+            const spotlight = new THREE.SpotLight(color, 0.8);
+            spotlight.position.set(pos.x, pos.y, pos.z);
+            spotlight.target.position.set(0, 0, 0);
+            spotlight.angle = Math.PI / 6;
+            spotlight.penumbra = 0.3;
+            spotlight.decay = 1;
+            spotlight.distance = 500; // Increased from 300 for larger arena
+            spotlight.castShadow = true;
+            
+            // Configure shadow properties
+            spotlight.shadow.mapSize.width = 1024;
+            spotlight.shadow.mapSize.height = 1024;
+            spotlight.shadow.camera.near = 10;
+            spotlight.shadow.camera.far = 500; // Increased from 300 for larger arena
+            
+            this.scene.add(spotlight);
+            this.scene.add(spotlight.target);
+        });
     }
     
     update() {

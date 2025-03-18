@@ -18,7 +18,10 @@ let stats;
 function init() {
     // Create Three.js scene
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87ceeb); // Sky blue background
+    
+    // Create a more vibrant gradient background
+    const bgTexture = createGradientBackground();
+    scene.background = bgTexture;
     
     // Create renderer
     renderer = new THREE.WebGLRenderer({
@@ -50,6 +53,31 @@ function init() {
     
     // Start animation loop
     animate();
+}
+
+// Create a gradient background texture
+function createGradientBackground() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2;
+    canvas.height = 512;
+    const context = canvas.getContext('2d');
+    
+    // Create gradient
+    const gradient = context.createLinearGradient(0, 0, 0, 512);
+    gradient.addColorStop(0, '#1a237e'); // Deep blue at top
+    gradient.addColorStop(0.5, '#4a148c'); // Purple in middle
+    gradient.addColorStop(1, '#880e4f'); // Deep pink at bottom
+    
+    // Fill with gradient
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 2, 512);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(1, 1);
+    
+    return texture;
 }
 
 // Animation loop

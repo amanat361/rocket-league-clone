@@ -28,9 +28,9 @@ export class Car {
         this.mass = 10;
         this.maxSpeed = 60; // Reduced max speed
         this.acceleration = 600; // Reduced acceleration
-        this.braking = 800; // Reduced braking force
-        this.handling = 0.2; // Increased handling for better turning response
-        this.friction = 0.1; // Increased friction for more stable movement
+        this.braking = 1000; // Increased braking force for faster stopping
+        this.handling = 0.15; // Reduced handling for less sensitive turning
+        this.friction = 0.3; // Increased friction to make floor less slippery
         
         // Car state
         this.isBoosting = false;
@@ -96,17 +96,17 @@ export class Car {
         this.body = new CANNON.Body({
             mass: this.mass,
             position: new CANNON.Vec3(
-                this.team === 'blue' ? -30 : 30,
+                this.team === 'blue' ? -50 : 50,
                 this.dimensions.height / 2 + 1,
-                this.team === 'blue' ? -80 : 80
+                this.team === 'blue' ? -120 : 120
             ),
             shape: shape,
             material: new CANNON.Material({
                 friction: this.friction,
                 restitution: 0.4 // Increased bounciness
             }),
-            linearDamping: 0.2, // Increased air resistance for more natural deceleration
-            angularDamping: 0.4 // Moderate rotational resistance - reduced to allow turning
+            linearDamping: 0.4, // Increased air resistance for faster stopping
+            angularDamping: 0.5 // Increased rotational resistance for more stable turning
         });
         
         // Set initial rotation based on team
@@ -463,9 +463,23 @@ export class Car {
             // Apply stronger lateral friction when not drifting
             this.body.applyForce(
                 new CANNON.Vec3(
-                    -lateralVelocity.x * 2,
+                    -lateralVelocity.x * 3, // Increased from 2 to 3 for better handling
                     0,
-                    -lateralVelocity.z * 2
+                    -lateralVelocity.z * 3  // Increased from 2 to 3 for better handling
+                ),
+                new CANNON.Vec3(this.body.position.x, this.body.position.y, this.body.position.z)
+            );
+        }
+        
+        // Apply additional drag when not accelerating to make car stop faster
+        if (!this.controls.forward && !this.controls.backward && !this.controls.boost) {
+            // Apply drag force opposite to velocity direction
+            const dragFactor = 1.5; // Increased drag for faster stopping
+            this.body.applyForce(
+                new CANNON.Vec3(
+                    -this.body.velocity.x * dragFactor,
+                    0,
+                    -this.body.velocity.z * dragFactor
                 ),
                 new CANNON.Vec3(this.body.position.x, this.body.position.y, this.body.position.z)
             );
@@ -504,9 +518,9 @@ export class Car {
             this.body.position.copy(position);
         } else {
             this.body.position.set(
-                this.team === 'blue' ? -30 : 30,
+                this.team === 'blue' ? -50 : 50,
                 this.dimensions.height / 2 + 1,
-                this.team === 'blue' ? -80 : 80
+                this.team === 'blue' ? -120 : 120
             );
         }
         

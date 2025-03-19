@@ -615,6 +615,10 @@ export class Game {
             this.opponentCar.update(deltaTime);
             this.stadium.update();
             
+            // Check for car-ball collisions
+            this.playerCar.handleBallCollision(this.ball);
+            this.opponentCar.handleBallCollision(this.ball);
+            
             // Update AI
             this.updateAI(deltaTime);
             

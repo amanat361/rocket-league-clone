@@ -1,19 +1,20 @@
 /**
  * Car class for creating and managing the player's car
+ * Ultra-simplified implementation with reliable controls
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon';
-import { directionFromRotation } from './utils.js';
+import { clamp } from './utils.js';
 
 export class Car {
     constructor(scene, world, team = 'blue', isPlayer = false) {
         this.scene = scene;
-        this.world = world; // Physics world
+        this.world = world;
         this.team = team; // 'blue' or 'orange'
-        this.isPlayer = isPlayer; // Is this the player's car?
+        this.isPlayer = isPlayer;
         
+        // Car meshes
         this.mesh = null;
-        this.body = null;
         this.wheels = [];
         this.boostParticles = [];
         
@@ -24,25 +25,38 @@ export class Car {
             length: 12
         };
         
-        // Car physics properties - simplified for arcade-style movement
-        this.mass = 10;
-        this.maxSpeed = 80; // Increased max speed for quicker movement
-        this.acceleration = 800; // Increased acceleration for more responsive controls
-        this.braking = 1200; // Increased braking force for faster stopping
-        this.turnSpeed = 40.0; // Doubled turning speed to ensure it works properly
-        this.friction = 0.5; // Increased friction to reduce sliding
+        // Simple driving properties
+        this.position = new THREE.Vector3(
+            this.team === 'blue' ? -50 : 50,
+            this.dimensions.height / 2 + 1,
+            this.team === 'blue' ? -120 : 120
+        );
+        this.rotation = new THREE.Euler(0, this.team === 'blue' ? 0 : Math.PI, 0);
+        this.velocity = new THREE.Vector3(0, 0, 0);
+        this.angularVelocity = 0; // Only for Y-axis rotation
+        
+        // Car physics properties - ultra simplified
+        this.maxSpeed = 80;
+        this.acceleration = 120;
+        this.deceleration = 200;
+        this.turnSpeed = 2.5;
+        this.driftTurnMultiplier = 1.8;
+        this.gravity = 20;
+        this.jumpForce = 10;
+        this.groundLevel = this.dimensions.height / 2 + 0.5;
         
         // Car state
+        this.speed = 0;
         this.isBoosting = false;
         this.boostAmount = 100; // 0-100
         this.boostRechargeRate = 10; // Per second
-        this.boostConsumptionRate = 0; // Set to 0 for unlimited boost
-        this.boostForce = 1200; // Boost force
-        this.jumpForce = 500; // Increased jump force
+        this.boostForce = 200;
         this.canJump = true;
         this.isJumping = false;
         this.jumpCooldown = 0;
-        this.jumpCooldownTime = 0.3; // Reduced cooldown time
+        this.jumpCooldownTime = 0.3;
+        this.isDrifting = false;
+        this.isOnGround = true;
         
         // Controls state
         this.controls = {
@@ -54,15 +68,6 @@ export class Car {
             jump: false,
             drift: false
         };
-        
-        // Movement direction - always in car's local space
-        this.movementDirection = new THREE.Vector3();
-        
-        // Current velocity for manual control
-        this.currentSpeed = 0;
-        
-        // Track if we're turning
-        this.isTurning = false;
         
         this.createCar();
     }
@@ -87,43 +92,12 @@ export class Car {
         this.mesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
         this.mesh.castShadow = true;
         this.mesh.receiveShadow = true;
+        this.mesh.position.copy(this.position);
+        this.mesh.rotation.copy(this.rotation);
         this.scene.add(this.mesh);
         
         // Add details to the car
         this.addCarDetails();
-        
-        // Create car physics body
-        const shape = new CANNON.Box(new CANNON.Vec3(
-            this.dimensions.width / 2,
-            this.dimensions.height / 2,
-            this.dimensions.length / 2
-        ));
-        
-        this.body = new CANNON.Body({
-            mass: this.mass,
-            position: new CANNON.Vec3(
-                this.team === 'blue' ? -50 : 50,
-                this.dimensions.height / 2 + 1,
-                this.team === 'blue' ? -120 : 120
-            ),
-            shape: shape,
-            material: new CANNON.Material({
-                friction: this.friction,
-                restitution: 0.2 // Reduced bounciness
-            }),
-            linearDamping: 0.7, // Increased damping for less sliding
-            angularDamping: 0.1 // Significantly reduced angular damping to allow better turning
-        });
-        
-        // Set initial rotation based on team
-        if (this.team === 'orange') {
-            this.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI);
-        }
-        
-        // Increase gravity for this body to make it fall faster
-        this.body.gravity = new CANNON.Vec3(0, -20, 0); // Default is (0, -9.82, 0)
-        
-        this.world.addBody(this.body);
         
         // Create boost particles
         this.createBoostParticles();
@@ -255,14 +229,13 @@ export class Car {
         }
         
         // Get car's backward direction
-        const carRotation = new THREE.Euler().setFromQuaternion(this.mesh.quaternion);
-        const direction = directionFromRotation(carRotation);
-        direction.multiplyScalar(-1); // Backward direction
+        const carDirection = new THREE.Vector3(0, 0, 1).applyEuler(this.rotation);
+        const backwardDirection = carDirection.clone().multiplyScalar(-1);
         
         // Get position of the boost nozzle
         const nozzlePosition = new THREE.Vector3(0, -1, -this.dimensions.length / 2 - 1);
-        nozzlePosition.applyQuaternion(this.mesh.quaternion);
-        nozzlePosition.add(this.mesh.position);
+        nozzlePosition.applyEuler(this.rotation);
+        nozzlePosition.add(this.position);
         
         // Update particles
         this.boostParticles.forEach(particle => {
@@ -280,15 +253,14 @@ export class Car {
                 
                 particle.mesh.material.color.set(particleColor);
                 
-                // Randomize particle size for more dynamic effect
+                // Randomize particle size
                 const baseSize = Math.random() * 0.5 + 0.5;
                 particle.mesh.scale.set(baseSize, baseSize, baseSize);
                 
-                // Increase particle speed for more dramatic trail
                 particle.speed = Math.random() * 3 + 2;
             } else {
                 // Update particle position
-                const moveDirection = direction.clone().add(particle.offset);
+                const moveDirection = backwardDirection.clone().add(particle.offset);
                 particle.mesh.position.addScaledVector(moveDirection, particle.speed * deltaTime * 15);
                 
                 // Update particle life
@@ -312,12 +284,33 @@ export class Car {
     }
     
     update(deltaTime) {
-        // Update car mesh position and rotation from physics body
-        this.mesh.position.copy(this.body.position);
-        this.mesh.quaternion.copy(this.body.quaternion);
-        
         // Handle controls
         this.handleControls(deltaTime);
+        
+        // Apply gravity if not on ground
+        if (!this.isOnGround) {
+            this.velocity.y -= this.gravity * deltaTime;
+        }
+        
+        // Update position based on velocity
+        this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
+        
+        // Update rotation based on angular velocity
+        this.rotation.y += this.angularVelocity * deltaTime;
+        
+        // Check ground collision
+        if (this.position.y <= this.groundLevel) {
+            this.position.y = this.groundLevel;
+            this.velocity.y = 0;
+            this.isOnGround = true;
+        }
+        
+        // Check for ball collision - this will be called by the game class
+        // but we need to have the method available
+        
+        // Update mesh position and rotation
+        this.mesh.position.copy(this.position);
+        this.mesh.rotation.copy(this.rotation);
         
         // Update boost particles
         this.updateBoostParticles(deltaTime);
@@ -325,7 +318,7 @@ export class Car {
         // Update jump cooldown
         if (this.jumpCooldown > 0) {
             this.jumpCooldown -= deltaTime;
-        } else if (!this.canJump && this.isOnGround()) {
+        } else if (!this.canJump && this.isOnGround) {
             this.canJump = true;
         }
         
@@ -336,116 +329,121 @@ export class Car {
         }
         
         // Check if car is out of bounds (fell through the floor)
-        if (this.body.position.y < -50) {
+        if (this.position.y < -50) {
             this.reset();
         }
         
-        // Force car to stay upright - prevent unwanted rotations
-        if (this.isOnGround()) {
-            // Get current rotation
-            const rotation = new THREE.Euler().setFromQuaternion(this.mesh.quaternion);
-            
-            // Create a new quaternion with only the Y rotation (yaw)
-            const uprightQuaternion = new THREE.Quaternion().setFromEuler(
-                new THREE.Euler(0, rotation.y, 0)
-            );
-            
-            // Apply the upright quaternion to the physics body
-            this.body.quaternion.copy(uprightQuaternion);
-            
-            // Reset X and Z angular velocity to prevent spinning, but keep Y for turning
-            this.body.angularVelocity.x = 0;
-            this.body.angularVelocity.z = 0;
-            
-            // If we're not turning, gradually reduce Y angular velocity
-            // But don't reduce it too quickly to allow turning momentum
-            if (!this.isTurning) {
-                this.body.angularVelocity.y *= 0.95; // Slower decay to maintain turning momentum
-            }
+        // Simple stadium boundary checks
+        const stadiumWidth = 300;
+        const stadiumLength = 450;
+        const halfWidth = stadiumWidth / 2;
+        const halfLength = stadiumLength / 2;
+        
+        // Bounce off walls
+        if (Math.abs(this.position.x) > halfWidth - this.dimensions.width / 2) {
+            this.position.x = Math.sign(this.position.x) * (halfWidth - this.dimensions.width / 2);
+            this.velocity.x *= -0.5; // Bounce with some energy loss
+        }
+        
+        if (Math.abs(this.position.z) > halfLength - this.dimensions.length / 2) {
+            this.position.z = Math.sign(this.position.z) * (halfLength - this.dimensions.length / 2);
+            this.velocity.z *= -0.5; // Bounce with some energy loss
         }
     }
     
     handleControls(deltaTime) {
-        // Simplified arcade-style car controls
-        
-        // Get the car's forward direction (only considering Y rotation)
-        const rotation = new THREE.Euler().setFromQuaternion(this.mesh.quaternion);
-        const forwardDir = new THREE.Vector3(0, 0, 1).applyEuler(new THREE.Euler(0, rotation.y, 0));
+        // Get the car's forward direction
+        const forwardDir = new THREE.Vector3(0, 0, 1).applyEuler(this.rotation);
         
         // Determine if we're driving forward or backward
         const isDrivingBackward = 
             (this.controls.backward && !this.controls.forward) || 
-            (this.currentSpeed < 0);
+            (this.speed < 0);
         
         // Handle acceleration and braking
         if (this.controls.forward) {
-            this.currentSpeed += this.acceleration * deltaTime;
+            this.speed += this.acceleration * deltaTime;
         } else if (this.controls.backward) {
-            this.currentSpeed -= this.braking * deltaTime;
+            this.speed -= this.acceleration * deltaTime;
         } else {
-            // Apply automatic braking when no input
-            if (this.currentSpeed > 0) {
-                this.currentSpeed -= this.braking * deltaTime;
-                if (this.currentSpeed < 0) this.currentSpeed = 0;
-            } else if (this.currentSpeed < 0) {
-                this.currentSpeed += this.braking * deltaTime;
-                if (this.currentSpeed > 0) this.currentSpeed = 0;
+            // Apply automatic deceleration when no input
+            if (this.speed > 0) {
+                this.speed -= this.deceleration * deltaTime;
+                if (this.speed < 0) this.speed = 0;
+            } else if (this.speed < 0) {
+                this.speed += this.deceleration * deltaTime;
+                if (this.speed > 0) this.speed = 0;
             }
         }
         
         // Apply boost
         this.isBoosting = false;
-        if (this.controls.boost && !isDrivingBackward) {
+        if (this.controls.boost && !isDrivingBackward && this.isOnGround) {
             this.isBoosting = true;
-            this.currentSpeed += this.boostForce * deltaTime;
+            this.speed += this.boostForce * deltaTime;
         }
         
         // Clamp speed to max speed
         const effectiveMaxSpeed = this.isBoosting ? this.maxSpeed * 1.5 : this.maxSpeed;
-        this.currentSpeed = Math.max(Math.min(this.currentSpeed, effectiveMaxSpeed), -this.maxSpeed * 0.6);
+        this.speed = clamp(this.speed, -this.maxSpeed * 0.6, effectiveMaxSpeed);
         
-        // Apply turning - invert controls when driving backward
-        let turnAmount = 0;
-        if (this.controls.left) {
-            turnAmount = isDrivingBackward ? -this.turnSpeed : this.turnSpeed;
-            this.isTurning = true;
-        } else if (this.controls.right) {
-            turnAmount = isDrivingBackward ? this.turnSpeed : -this.turnSpeed;
-            this.isTurning = true;
-        } else {
-            this.isTurning = false;
-        }
+        // Check if drifting
+        this.isDrifting = this.controls.drift && Math.abs(this.speed) > 20 && this.isOnGround;
         
-        // Apply turning directly to angular velocity for immediate response
-        if (turnAmount !== 0) {
-            // Set angular velocity directly for immediate response
-            this.body.angularVelocity.y = turnAmount;
+        // Handle turning
+        if (this.isOnGround) {
+            let turnAmount = 0;
             
-            // Force the turning to take effect by applying a small impulse
-            // This helps overcome any physics constraints that might be preventing turning
-            const impulse = new CANNON.Vec3(0, 0, 0);
-            const point = new CANNON.Vec3(0, 0, 0);
-            this.body.applyImpulse(impulse, point);
+            // Calculate turn amount based on controls
+            if (this.controls.left) {
+                turnAmount = isDrivingBackward ? -1 : 1;
+            } else if (this.controls.right) {
+                turnAmount = isDrivingBackward ? 1 : -1;
+            }
             
-            // Debug log to verify turning is being applied
-            console.log(`Turning: ${turnAmount > 0 ? 'left' : 'right'}, Angular velocity Y: ${this.body.angularVelocity.y}`);
+            if (turnAmount !== 0) {
+                // Improved turning at speed - less reduction at higher speeds
+                // and a higher minimum to ensure responsive turning
+                const speedFactor = Math.max(
+                    0.8, // Increased minimum turn effectiveness at high speed (80%)
+                    1 - (Math.abs(this.speed) / this.maxSpeed) * 0.2 // Reduce by only 20% at max speed
+                );
+                
+                // Increased base turn speed
+                let effectiveTurnRate = this.turnSpeed * 1.5 * speedFactor;
+                
+                // Apply drift boost if drifting
+                if (this.isDrifting) {
+                    effectiveTurnRate *= this.driftTurnMultiplier;
+                }
+                
+                // Apply turn as angular velocity
+                this.angularVelocity = turnAmount * effectiveTurnRate;
+            } else {
+                // Gradually reduce turning when no input
+                this.angularVelocity *= 0.9;
+            }
         }
         
         // Apply movement in the car's forward direction
-        if (Math.abs(this.currentSpeed) > 0.1) {
+        if (Math.abs(this.speed) > 0.1) {
             // Calculate velocity based on current speed and direction
-            const velocity = forwardDir.clone().multiplyScalar(this.currentSpeed);
+            const moveVelocity = forwardDir.clone().multiplyScalar(this.speed);
             
             // Keep the Y velocity (for jumps) but replace X and Z
-            this.body.velocity.x = velocity.x;
-            this.body.velocity.z = velocity.z;
+            this.velocity.x = moveVelocity.x;
+            this.velocity.z = moveVelocity.z;
+        } else {
+            // Apply friction to slow down X and Z velocity when speed is very low
+            this.velocity.x *= 0.95;
+            this.velocity.z *= 0.95;
         }
         
         // Handle jump
-        if (this.controls.jump && this.canJump && !this.isJumping && this.isOnGround()) {
+        if (this.controls.jump && this.canJump && !this.isJumping && this.isOnGround) {
             // Apply jump force
-            this.body.velocity.y = this.jumpForce * 0.1;
-            
+            this.velocity.y = this.jumpForce;
+            this.isOnGround = false;
             this.isJumping = true;
             this.canJump = false;
             this.jumpCooldown = this.jumpCooldownTime;
@@ -454,51 +452,33 @@ export class Car {
         }
     }
     
-    isOnGround() {
-        // Raycast to check if car is on ground
-        const start = this.body.position;
-        const end = new CANNON.Vec3(
-            start.x,
-            start.y - (this.dimensions.height / 2 + 0.5),
-            start.z
-        );
-        
-        const result = new CANNON.RaycastResult();
-        this.world.raycastClosest(start, end, { collisionFilterMask: 1 }, result);
-        
-        return result.hasHit;
-    }
-    
     reset(position = null) {
         // Reset car position
         if (position) {
-            this.body.position.copy(position);
+            this.position.copy(position);
         } else {
-            this.body.position.set(
+            this.position.set(
                 this.team === 'blue' ? -50 : 50,
-                this.dimensions.height / 2 + 1,
+                this.groundLevel,
                 this.team === 'blue' ? -120 : 120
             );
         }
         
         // Reset car rotation based on team
-        if (this.team === 'blue') {
-            this.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), 0);
-        } else {
-            this.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI);
-        }
+        this.rotation.set(0, this.team === 'blue' ? 0 : Math.PI, 0);
         
         // Reset car velocity and angular velocity
-        this.body.velocity.set(0, 0, 0);
-        this.body.angularVelocity.set(0, 0, 0);
+        this.velocity.set(0, 0, 0);
+        this.angularVelocity = 0;
         
         // Reset car state
-        this.currentSpeed = 0;
+        this.speed = 0;
         this.boostAmount = 100;
         this.canJump = true;
         this.isJumping = false;
         this.jumpCooldown = 0;
-        this.isTurning = false;
+        this.isDrifting = false;
+        this.isOnGround = true;
         
         // Reset controls
         this.controls = {
@@ -510,17 +490,83 @@ export class Car {
             jump: false,
             drift: false
         };
+        
+        // Update mesh position and rotation
+        this.mesh.position.copy(this.position);
+        this.mesh.rotation.copy(this.rotation);
     }
     
-    get position() {
-        return this.mesh.position;
-    }
-    
-    get velocity() {
-        return new THREE.Vector3(
-            this.body.velocity.x,
-            this.body.velocity.y,
-            this.body.velocity.z
+    // Handle collision with the ball
+    handleBallCollision(ball) {
+        // Get ball properties from the ball's CANNON physics body
+        const ballPosition = ball.position;
+        const ballRadius = ball.radius || 5; // Default to 5 if not specified
+        
+        // Calculate car's bounding sphere for simple collision
+        const carRadius = Math.max(
+            this.dimensions.width / 2,
+            this.dimensions.height / 2,
+            this.dimensions.length / 2
         );
+        
+        // Calculate distance between car and ball centers
+        const distance = this.position.distanceTo(ballPosition);
+        
+        // Check if collision occurred
+        if (distance < (carRadius + ballRadius)) {
+            // Calculate collision normal (direction from car to ball)
+            const normal = new THREE.Vector3()
+                .subVectors(ballPosition, this.position)
+                .normalize();
+            
+            // Calculate impact force based on car's speed and mass, but scaled down significantly
+            const impactForce = Math.abs(this.speed) * 0.3; // Reduced multiplier from mass to 0.3
+            
+            // Add extra force based on how direct the hit is
+            // Get car's forward direction
+            const forwardDir = new THREE.Vector3(0, 0, 1).applyEuler(this.rotation);
+            
+            // Calculate how direct the hit is (1 = direct hit, 0 = glancing hit)
+            const directness = Math.abs(forwardDir.dot(normal));
+            
+            // Calculate final force with directness bonus (reduced multiplier)
+            const finalForce = impactForce * (1 + directness * 0.5); // Reduced directness bonus
+            
+            // Apply impulse to the ball using its CANNON physics method
+            ball.applyImpulse(normal, finalForce);
+            
+            // Add a small upward force for more interesting bounces, but much less than before
+            if (this.speed > 40 && directness > 0.8) {
+                const upForce = Math.min(this.speed * 0.1, 5); // Significantly reduced upward force
+                const upVector = new THREE.Vector3(0, 1, 0);
+                ball.applyImpulse(upVector, upForce);
+            }
+            
+            // Apply a small bounce effect to the car
+            const bounceStrength = finalForce * 0.05; // Car is heavier so less effect
+            const carBounceBack = normal.clone().multiplyScalar(-bounceStrength);
+            this.velocity.add(carBounceBack);
+            
+            // Return true to indicate collision occurred
+            return true;
+        }
+        
+        // No collision
+        return false;
+    }
+    
+    // Compatibility methods for the rest of the game
+    get body() {
+        return {
+            position: this.position,
+            velocity: this.velocity,
+            quaternion: new THREE.Quaternion().setFromEuler(this.rotation),
+            angularVelocity: new CANNON.Vec3(0, this.angularVelocity, 0)
+        };
+    }
+    
+    // Add mass property for collision calculations
+    get mass() {
+        return 10; // Car mass
     }
 }

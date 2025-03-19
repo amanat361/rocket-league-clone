@@ -41,8 +41,9 @@ export class Car {
         this.deceleration = 200;
         this.turnSpeed = 2.5;
         this.driftTurnMultiplier = 1.8;
-        this.gravity = 20;
-        this.jumpForce = 10;
+        this.gravity = 60; // Dramatically increased to make the car fall much faster
+        this.jumpForce = 50; // Dramatically increased to make jumps much higher
+        this.airControlFactor = 0.7; // Factor for air control (0-1)
         this.groundLevel = this.dimensions.height / 2 + 0.5;
         
         // Car state
@@ -376,53 +377,64 @@ export class Car {
             }
         }
         
-        // Apply boost
+        // Apply boost - now works in air too
         this.isBoosting = false;
-        if (this.controls.boost && !isDrivingBackward && this.isOnGround) {
+        if (this.controls.boost && !isDrivingBackward) {
             this.isBoosting = true;
             this.speed += this.boostForce * deltaTime;
+            
+            // If in air, also apply boost force in the direction we're facing
+            if (!this.isOnGround) {
+                const boostDirection = forwardDir.clone();
+                const boostVelocity = boostDirection.multiplyScalar(this.boostForce * 0.5 * deltaTime);
+                this.velocity.x += boostVelocity.x;
+                this.velocity.z += boostVelocity.z;
+            }
         }
         
         // Clamp speed to max speed
         const effectiveMaxSpeed = this.isBoosting ? this.maxSpeed * 1.5 : this.maxSpeed;
         this.speed = clamp(this.speed, -this.maxSpeed * 0.6, effectiveMaxSpeed);
         
-        // Check if drifting
+        // Check if drifting - only on ground
         this.isDrifting = this.controls.drift && Math.abs(this.speed) > 20 && this.isOnGround;
         
-        // Handle turning
-        if (this.isOnGround) {
-            let turnAmount = 0;
+        // Handle turning - now works in air too
+        let turnAmount = 0;
+        
+        // Calculate turn amount based on controls
+        if (this.controls.left) {
+            turnAmount = isDrivingBackward ? -1 : 1;
+        } else if (this.controls.right) {
+            turnAmount = isDrivingBackward ? 1 : -1;
+        }
+        
+        if (turnAmount !== 0) {
+            // Improved turning at speed - less reduction at higher speeds
+            // and a higher minimum to ensure responsive turning
+            const speedFactor = Math.max(
+                0.8, // Increased minimum turn effectiveness at high speed (80%)
+                1 - (Math.abs(this.speed) / this.maxSpeed) * 0.2 // Reduce by only 20% at max speed
+            );
             
-            // Calculate turn amount based on controls
-            if (this.controls.left) {
-                turnAmount = isDrivingBackward ? -1 : 1;
-            } else if (this.controls.right) {
-                turnAmount = isDrivingBackward ? 1 : -1;
+            // Increased base turn speed
+            let effectiveTurnRate = this.turnSpeed * 1.5 * speedFactor;
+            
+            // Apply drift boost if drifting
+            if (this.isDrifting) {
+                effectiveTurnRate *= this.driftTurnMultiplier;
             }
             
-            if (turnAmount !== 0) {
-                // Improved turning at speed - less reduction at higher speeds
-                // and a higher minimum to ensure responsive turning
-                const speedFactor = Math.max(
-                    0.8, // Increased minimum turn effectiveness at high speed (80%)
-                    1 - (Math.abs(this.speed) / this.maxSpeed) * 0.2 // Reduce by only 20% at max speed
-                );
-                
-                // Increased base turn speed
-                let effectiveTurnRate = this.turnSpeed * 1.5 * speedFactor;
-                
-                // Apply drift boost if drifting
-                if (this.isDrifting) {
-                    effectiveTurnRate *= this.driftTurnMultiplier;
-                }
-                
-                // Apply turn as angular velocity
-                this.angularVelocity = turnAmount * effectiveTurnRate;
-            } else {
-                // Gradually reduce turning when no input
-                this.angularVelocity *= 0.9;
+            // Reduce turning effectiveness in air
+            if (!this.isOnGround) {
+                effectiveTurnRate *= this.airControlFactor;
             }
+            
+            // Apply turn as angular velocity
+            this.angularVelocity = turnAmount * effectiveTurnRate;
+        } else {
+            // Gradually reduce turning when no input
+            this.angularVelocity *= 0.9;
         }
         
         // Apply movement in the car's forward direction
@@ -500,27 +512,29 @@ export class Car {
     handleBallCollision(ball) {
         // Get ball properties from the ball's CANNON physics body
         const ballPosition = ball.position;
-        const ballRadius = ball.radius || 5; // Default to 5 if not specified
+        const visualBallRadius = ball.radius || 5; // Default to 5 if not specified
+        const hitboxMultiplier = 2.0; // Increased from 1.5 to 2.0 to make collision more sensitive
+        const effectiveBallRadius = visualBallRadius * hitboxMultiplier;
         
         // Calculate car's bounding sphere for simple collision
         const carRadius = Math.max(
             this.dimensions.width / 2,
             this.dimensions.height / 2,
             this.dimensions.length / 2
-        );
+        ) * 1.2; // Increased car hitbox by 20% for better collision detection
         
         // Calculate distance between car and ball centers
         const distance = this.position.distanceTo(ballPosition);
         
-        // Check if collision occurred
-        if (distance < (carRadius + ballRadius)) {
+        // Check if collision occurred - using the larger effective radius
+        if (distance < (carRadius + effectiveBallRadius)) {
             // Calculate collision normal (direction from car to ball)
             const normal = new THREE.Vector3()
                 .subVectors(ballPosition, this.position)
                 .normalize();
             
-            // Calculate impact force based on car's speed and mass, but scaled down significantly
-            const impactForce = Math.abs(this.speed) * 0.3; // Reduced multiplier from mass to 0.3
+            // Calculate impact force based on car's speed and mass
+            const impactForce = Math.abs(this.speed) * 0.4; // Increased from 0.3 to 0.4 for stronger hits
             
             // Add extra force based on how direct the hit is
             // Get car's forward direction
@@ -529,21 +543,21 @@ export class Car {
             // Calculate how direct the hit is (1 = direct hit, 0 = glancing hit)
             const directness = Math.abs(forwardDir.dot(normal));
             
-            // Calculate final force with directness bonus (reduced multiplier)
-            const finalForce = impactForce * (1 + directness * 0.5); // Reduced directness bonus
+            // Calculate final force with directness bonus
+            const finalForce = impactForce * (1 + directness * 0.8); // Increased directness bonus from 0.5 to 0.8
             
             // Apply impulse to the ball using its CANNON physics method
             ball.applyImpulse(normal, finalForce);
             
-            // Add a small upward force for more interesting bounces, but much less than before
-            if (this.speed > 40 && directness > 0.8) {
-                const upForce = Math.min(this.speed * 0.1, 5); // Significantly reduced upward force
+            // Add a small upward force for more interesting bounces
+            if (this.speed > 30 && directness > 0.7) { // Reduced speed threshold from 40 to 30 and directness from 0.8 to 0.7
+                const upForce = Math.min(this.speed * 0.15, 7); // Increased upward force multiplier
                 const upVector = new THREE.Vector3(0, 1, 0);
                 ball.applyImpulse(upVector, upForce);
             }
             
-            // Apply a small bounce effect to the car
-            const bounceStrength = finalForce * 0.05; // Car is heavier so less effect
+            // Apply a stronger bounce effect to the car for better feedback
+            const bounceStrength = finalForce * 0.08; // Increased from 0.05 to 0.08
             const carBounceBack = normal.clone().multiplyScalar(-bounceStrength);
             this.velocity.add(carBounceBack);
             

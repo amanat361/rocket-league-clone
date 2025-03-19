@@ -11,7 +11,7 @@ export class Ball {
         this.world = world; // Physics world
         this.mesh = null;
         this.body = null;
-        this.radius = 5;
+        this.radius = 8; // Increased from 5 to make the ball bigger
         this.mass = 1;
         this.restitution = 1.5; // Bounciness
         

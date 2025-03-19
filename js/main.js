@@ -34,7 +34,7 @@ function init() {
     
     // Create physics world
     world = new CANNON.World();
-    world.gravity.set(0, -9.82, 0); // Earth gravity
+    world.gravity.set(0, -15, 0); // Increased from -9.82 to make the ball fall faster
     world.broadphase = new CANNON.SAPBroadphase(world);
     world.solver.iterations = 10;
     world.defaultContactMaterial.contactEquationStiffness = 1e6;

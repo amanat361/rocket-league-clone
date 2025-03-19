@@ -137,8 +137,8 @@ export class Stadium {
         }
         
         // End walls (along X-axis, excluding goal areas)
-        const goalWidth = 60; // Increased from 40
-        const goalHeight = 45; // Increased from 30
+        const goalWidth = 80; // Increased from 60 to make goals wider
+        const goalHeight = 60; // Increased from 45 to make goals taller
         
         for (let i = -1; i <= 1; i += 2) {
             // Choose material based on which end (blue or orange)
@@ -259,7 +259,7 @@ export class Stadium {
     }
     
     createGoals() {
-        const goalHeight = 45; // Increased from 30
+        const goalHeight = 60; // Increased from 45 to make goals taller
         
         // Create blue goal (at negative Z)
         this.createGoal('blue', new THREE.Vector3(0, goalHeight / 2, -(this.dimensions.length / 2)));
@@ -269,9 +269,9 @@ export class Stadium {
     }
     
     createGoal(team, position) {
-        const goalWidth = 60; // Increased from 40
-        const goalHeight = 45; // Increased from 30
-        const goalDepth = 20; // Increased from 15
+        const goalWidth = 80; // Increased from 60 to make goals wider
+        const goalHeight = 60; // Increased from 45 to make goals taller
+        const goalDepth = 25; // Increased from 20 to make goals deeper
         
         // Goal color based on team
         const goalColor = team === 'blue' ? 0x0066ff : 0xff6600;
@@ -573,9 +573,9 @@ export class Stadium {
     
     // Check if ball is in a goal and return the team that scored
     checkGoal(ballPosition) {
-        const goalWidth = 60; // Increased from 40
-        const goalHeight = 45; // Increased from 30
-        const goalDepth = 20; // Unchanged
+        const goalWidth = 80; // Increased from 60 to make goals wider
+        const goalHeight = 60; // Increased from 45 to make goals taller
+        const goalDepth = 25; // Increased from 20 to make goals deeper
         
         // Check blue goal (negative Z)
         if (

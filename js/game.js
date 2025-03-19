@@ -88,11 +88,19 @@ export class Game {
         // Create ball
         this.ball = new Ball(this.scene, this.world);
         
-        // Create player car (blue team)
+        // Create player car (blue team) with enhanced speed
         this.playerCar = new Car(this.scene, this.world, 'blue', true);
+        // Enhance player car speed and acceleration
+        this.playerCar.maxSpeed = 100; // Increased from 80
+        this.playerCar.acceleration = 150; // Increased from 120
+        this.playerCar.boostForce = 250; // Increased from 200
         
-        // Create opponent car (orange team)
+        // Create opponent car (orange team) with reduced speed
         this.opponentCar = new Car(this.scene, this.world, 'orange', false);
+        // Reduce opponent car speed and acceleration
+        this.opponentCar.maxSpeed = 65; // Reduced from 80
+        this.opponentCar.acceleration = 90; // Reduced from 120
+        this.opponentCar.boostForce = 160; // Reduced from 200
         
         // Set up camera
         this.setupCamera();
